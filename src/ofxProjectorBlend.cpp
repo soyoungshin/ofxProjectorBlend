@@ -21,10 +21,24 @@ ofxProjectorBlend::ofxProjectorBlend()
 void ofxProjectorBlend::setup(int resolutionWidth, 
 							  int resolutionHeight, 
 							  int _numProjectors, 
-							  int _pixelOverlap, 
+							  vector<float> _pixelOverlap,
 							  ofxProjectorBlendLayout _layout, 
 							  ofxProjectorBlendRotation _rotation)
 {
+
+    if(_numProjectors <= 0){
+		ofLog(OF_LOG_ERROR, "Cannot initialize with " + ofToString(_numProjectors) + " projectors.");
+		return;
+	}
+
+    if (_pixelOverlap.size() < _numProjectors - 1) {
+        ofLog(OF_LOG_NOTICE, "ofxProjectorBlend: Expected %d values for pixelOverlap, found %d. Using 0 for additional overlap values.", _numProjectors - 1, _pixelOverlap.size());
+    } else if (_pixelOverlap.size() >= _numProjectors) {
+        ofLog(OF_LOG_NOTICE, "ofxProjectorBlend: Expected %d values for pixelOverlap, found %d. Ignoring additional overlap values.", _numProjectors - 1, _pixelOverlap.size());
+    }
+
+    pixelOverlap = _pixelOverlap;
+    pixelOverlap.resize(_numProjectors - 1, 0);
 
 	string l = "horizontal";
 	if(layout==ofxProjectorBlend_Vertical) l = "vertical";
@@ -32,24 +46,28 @@ void ofxProjectorBlend::setup(int resolutionWidth,
 	string r = "normal";
 	if(rotation==ofxProjectorBlend_RotatedLeft) r = "rotated left";
 	else if(rotation==ofxProjectorBlend_RotatedRight) r = "rotated right";
-	
-	ofLog(OF_LOG_NOTICE, "ofxProjectorBlend: res: %d x %d * %d, overlap: %d pixels, layout: %s, rotation: %s\n", resolutionWidth, resolutionHeight, _numProjectors, _pixelOverlap, l.c_str(), r.c_str());
+
+
+
+    stringstream s;
+    for (vector<float>::iterator it = pixelOverlap.begin(); it != pixelOverlap.end(); ++it) {
+        s << " " << *it;
+    }
+
+	ofLog(OF_LOG_NOTICE, "ofxProjectorBlend: res: %d x %d * %d, pixelOverlap values: %s, layout: %s, rotation: %s\n", resolutionWidth, resolutionHeight, _numProjectors, s.str().c_str(), l.c_str(), r.c_str());
 	numProjectors = _numProjectors;
 	layout = _layout;
 	rotation = _rotation;
 	
-	if(numProjectors <= 0){
-		ofLog(OF_LOG_ERROR, "Cannot initialize with " + ofToString(this->numProjectors) + " projectors.");
-		return;
-	}
-	
+    projectorHeightOffset.clear();
 	//allow editing projector heights
 	for(int i = 0; i < numProjectors; i++){
 		projectorHeightOffset.push_back( 0 );
 	}
-	
-	pixelOverlap = _pixelOverlap;
-	
+    
+    float totalPixelOverlap = accumulate(pixelOverlap.begin(), pixelOverlap.end(), 0);
+
+
 	if(rotation == ofxProjectorBlend_NoRotation) {
 		singleChannelWidth = resolutionWidth;
 		singleChannelHeight = resolutionHeight;
@@ -61,10 +79,10 @@ void ofxProjectorBlend::setup(int resolutionWidth,
 	
 	if(layout == ofxProjectorBlend_Vertical) {
 		fullTextureWidth = singleChannelWidth;
-		fullTextureHeight = singleChannelHeight*numProjectors - pixelOverlap*(numProjectors-1);
+		fullTextureHeight = singleChannelHeight*numProjectors - totalPixelOverlap;
 	}
 	else if(layout == ofxProjectorBlend_Horizontal) {
-		fullTextureWidth = singleChannelWidth*numProjectors - pixelOverlap*(numProjectors-1);
+		fullTextureWidth = singleChannelWidth*numProjectors - totalPixelOverlap;
 		fullTextureHeight = singleChannelHeight;
 	} else {
 		ofLog(OF_LOG_ERROR, "ofxProjectorBlend: You have used an invalid ofxProjectorBlendLayout in ofxProjectorBlend::setup()");
@@ -182,14 +200,7 @@ void ofxProjectorBlend::draw(float x, float y) {
 		blendShader.setUniform1f("height", singleChannelHeight);
 		
 		updateShaderUniforms();
-		
-		if(layout == ofxProjectorBlend_Horizontal) {
-			blendShader.setUniform1f("OverlapRight", pixelOverlap);	
-		}
-		else {
-			blendShader.setUniform1f("OverlapTop", pixelOverlap);
-		}
-		
+
 		blendShader.setUniformTexture("Tex0", fullTexture.getTextureReference(), 0);
 		
 		
@@ -199,28 +210,37 @@ void ofxProjectorBlend::draw(float x, float y) {
 		// loop through each projector and glTranslatef() to its position and draw.
 		for(int i = 0; i < numProjectors; i++) {
 			blendShader.setUniform2f("texCoordOffset", offset.x, offset.y);
-			
-			if(i==1) {
-				// set the first edge
-				if(layout == ofxProjectorBlend_Horizontal) {
-					blendShader.setUniform1f("OverlapLeft", pixelOverlap);	
-				}
-				else {
-					blendShader.setUniform1f("OverlapBottom", pixelOverlap);
-				}
-				
-			}
-			// if we're at the end of the list of projectors, turn off the second edge's blend
-			
-			if(i+1 == numProjectors) {
-				if(layout == ofxProjectorBlend_Horizontal) {
-					blendShader.setUniform1f("OverlapRight", 0);	
-				}
-				else {
-					blendShader.setUniform1f("OverlapTop", 0);
-				}
-			}
-			
+
+            float overlapLeft = 0, overlapRight = 0, overlapTop = 0, overlapBottom = 0;
+            if (layout == ofxProjectorBlend_Horizontal) {
+                // do not set for first projector
+                if (i != 0) {
+                    overlapLeft = pixelOverlap[i-1];
+                }
+
+                // do not set for last projector
+                if (i + 1 != numProjectors) {
+                    overlapRight = pixelOverlap[i];
+                }
+
+                blendShader.setUniform1f("OverlapLeft", overlapLeft);
+                blendShader.setUniform1f("OverlapRight", overlapRight);
+            } else {
+                // do not set for first projector
+                if (i != 0) {
+                    overlapBottom = pixelOverlap[i-1];
+                }
+
+                // do not set for last projector
+                if (i + 1 != numProjectors) {
+                    overlapTop = pixelOverlap[i];
+                }
+
+
+                blendShader.setUniform1f("OverlapTop", overlapTop);
+                blendShader.setUniform1f("OverlapBottom", overlapBottom);
+            }
+
 			glPushMatrix(); {
 				if(rotation == ofxProjectorBlend_RotatedRight) {
 					glRotatef(90, 0, 0, 1);
@@ -253,11 +273,10 @@ void ofxProjectorBlend::draw(float x, float y) {
 			
 			// move the texture offset and where we're drawing to.
 			if(layout == ofxProjectorBlend_Horizontal) {
-				offset.x += singleChannelWidth - pixelOverlap;
+				offset.x += singleChannelWidth - overlapRight;
 			}
 			else {
-				offset.y += singleChannelHeight - pixelOverlap;
-				
+				offset.y += singleChannelHeight - overlapTop;
 			}
 			
 			if(rotation == ofxProjectorBlend_RotatedLeft || rotation == ofxProjectorBlend_RotatedRight) {

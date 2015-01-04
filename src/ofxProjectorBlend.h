@@ -30,7 +30,7 @@ class ofxProjectorBlend
 	 *            rotatedRight, if it's the right way round, it's noRotation.
 	 *
 	 */
-	void setup(int resolutionWidth, int resolutionHeight, int numProjectors, int pixelOverlap, 
+	void setup(int resolutionWidth, int resolutionHeight, int numProjectors, vector<float> pixelOverlap,
 			   ofxProjectorBlendLayout layout = ofxProjectorBlend_Horizontal, 
 			   ofxProjectorBlendRotation rotation = ofxProjectorBlend_NoRotation);
 	
@@ -75,9 +75,7 @@ class ofxProjectorBlend
 	vector<float> blendPower;
 	vector<float> gamma;
 	vector<float> luminance;
-	//float blendPower2;
-	//float gamma2;
-	//float luminance2;
+    vector<float> pixelOverlap;
 	float threshold;
 	
 protected:
@@ -91,8 +89,7 @@ protected:
 
 	float displayWidth;
 	float displayHeight;
-	
-	float pixelOverlap;
+
 	int numProjectors;
 	ofxProjectorBlendLayout layout;
 	ofxProjectorBlendRotation rotation;
